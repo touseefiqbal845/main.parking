@@ -68,7 +68,7 @@
             <PublicRoute>
               <>
                 <PageTitle title="SignUp | React" />
-                <Login />
+                <SignUp />
               </>
             </PublicRoute>
           }
