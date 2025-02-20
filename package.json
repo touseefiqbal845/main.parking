@@ -1,6 +1,7 @@
 {
     "name": "tailadmin-react-free",
     "private": true,
+    "homepage":"https://main.m6parking.ca/",
     "version": "1.3.7",
     "type": "module",
     "scripts": {
