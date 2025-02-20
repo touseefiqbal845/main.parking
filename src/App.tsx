@@ -46,33 +46,33 @@ function App() {
     setTimeout(() => setLoading(false), 1000);
   }, []);
 
-  return loading ? (
-    <Loader />
-  ) : (
-    <Routes>
-      {/* Public Routes - Redirects authenticated users to /vehicles */}
-      <Route
-        path="/login"
-        element={
-          <PublicRoute>
-            <>
-              <PageTitle title="Login | React" />
-              <Login />
-            </>
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <PublicRoute>
-            <>
-              <PageTitle title="SignUp | React" />
-              <SignUp />
-            </>
-          </PublicRoute>
-        }
-      />
+    return loading ? (
+      <Loader />
+    ) : (
+      <Routes>
+        {/* Public Routes - Redirects authenticated users to /vehicles */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <>
+                <PageTitle title="Login | React" />
+                <Login />
+              </>
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <PublicRoute>
+              <>
+                <PageTitle title="SignUp | React" />
+                <Login />
+              </>
+            </PublicRoute>
+          }
+        />
 
       {/* Protected Routes - Redirects unauthenticated users to / (Signup) */}
       <Route
