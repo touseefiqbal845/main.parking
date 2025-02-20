@@ -68,7 +68,7 @@ function App() {
             <PublicRoute>
               <>
                 <PageTitle title="SignUp | React" />
-                <Login />
+                <SignUp />
               </>
             </PublicRoute>
           }
