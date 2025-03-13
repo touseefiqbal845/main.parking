@@ -20,7 +20,7 @@ export interface LoginResponse {
 export const authApi = {
   login: (data: { username: string; password: string }) =>
     api.post<LoginResponse>('/login', data),
-  
+
   logout: () => api.get('/logout'),
 };
 export interface Lot {
@@ -50,11 +50,12 @@ export interface Vehicle {
   notes: string | null;
   created_at: string;
   updated_at: string;
-  lot?: Lot; // For joined data
+  lot?: any; // For joined data
 }
 
 export const lotApi = {
-  getAllLots: () => api.get<Lot[]>('/lots'),
+  getAllLots: (params: { page: number; per_page: number }) =>
+    api.get<Lot[]>('/lots', { params }), // Pass params to API call
   getLot: (id: number) => api.get<Lot>(`/lots/${id}`),
   createLot: (data: {
     lot_code: string;
@@ -66,18 +67,25 @@ export const lotApi = {
     note?: string;
     pricing?: any;
   }) => api.post<Lot>('/lots', data),
-  updateLot: (id: number, data: Partial<Lot>) => 
+  updateLot: (id: number, data: Partial<Lot>) =>
     api.put<Lot>(`/lots/${id}`, data),
   deleteLot: (id: number) => api.delete(`/lots/${id}`),
-  exportLots: (ids: number[]) => 
+  exportLots: (ids: number[]) =>
     api.post('/lots/export', { ids }, { responseType: 'blob' })
 };
 
 export const vehicleApi = {
-  getAllVehicles: () => api.get<Vehicle[]>('/vehicles'),
-  
+  getAllVehicles: (params: { page: number; per_page: number }) =>
+    api.get<{
+      data: Vehicle[];
+      total: number;
+      per_page: number;
+      current_page: number;
+      last_page: number;
+    }>('/vehicles', { params }),
+
   getVehicle: (id: number) => api.get<Vehicle>(`/vehicles/${id}`),
-  
+
   bulkCreateVehicles: (data: {
     lot_number_id: number;
     status: Vehicle['status'];
@@ -89,12 +97,13 @@ export const vehicleApi = {
       permit_id: string;
     }>;
   }) => api.post<Vehicle[]>('/vehicles/bulk', data),
-  
-  updateVehicle: (id: number, data: Partial<Vehicle>) => 
+
+  updateVehicle: (id: number, data: Partial<Vehicle>) =>
     api.put<Vehicle>(`/vehicles/${id}`, data),
-  
-  deleteVehicle: (id: number) => api.delete(`/vehicles/${id}`)
+
+  deleteVehicle: (id: number) => api.delete(`/vehicles/${id}`),
 };
+
 
 // Add this interface to your api.ts file
 export interface AccessCode {
@@ -113,23 +122,29 @@ export interface AccessCode {
 
 // Add this to your api.ts file
 export const accessCodeApi = {
-  getAllAccessCodes: () => api.get<AccessCode[]>('/access-codes'),
-  
+  getAllAccessCodes: (params?: { per_page?: number; current_page?: number }) =>
+    api.get<{
+      data: AccessCode[];
+      total: number;
+      per_page: number;
+      current_page: number;
+      last_page: number;
+    }>('/access-codes', { params }),
   getAccessCode: (id: number) => api.get<AccessCode>(`/access-codes/${id}`),
-  
+
   bulkCreateAccessCodes: (data: {
     lot_number_id: number;
     permits_per_month: number;
     duration: string;
     entries: string[];
   }) => api.post<AccessCode[]>('/access-codes/bulk', data),
-  
-  updateAccessCode: (id: number, data: Partial<AccessCode>) => 
+
+  updateAccessCode: (id: number, data: Partial<AccessCode>) =>
     api.put<AccessCode>(`/access-codes/${id}`, data),
-  
+
   deleteAccessCode: (id: number) => api.delete(`/access-codes/${id}`),
-  
-  toggleActive: (ids: number[]) => 
+
+  toggleActive: (ids: number[]) =>
     api.put('/access-codes/toggle-active', { ids })
 };
 
@@ -144,9 +159,10 @@ export interface User {
 }
 
 export const userApi = {
-  getAllUsers: (params?: { 
+  getAllUsers: (params?: {
     search?: string;
     per_page?: number | 'all';
+    current_page?: number;
   }) => api.get<{
     data: User[];
     total: number;
@@ -154,7 +170,8 @@ export const userApi = {
     current_page: number;
     last_page: number;
   }>('/users', { params }),
-  
+
+
   createUser: (data: {
     username: string;
     password: string;
@@ -162,13 +179,13 @@ export const userApi = {
     note?: string;
     properties: string[];
   }) => api.post<User>('/users', data),
-  
-  updateUser: (id: number, data: Partial<Omit<User, 'id'>>) => 
+
+  updateUser: (id: number, data: Partial<Omit<User, 'id'>>) =>
     api.put<User>(`/users/${id}`, data),
-  
+
   deleteUser: (id: number) => api.delete(`/users/${id}`),
-  
-  bulkDeleteUsers: (ids: number[]) => 
+
+  bulkDeleteUsers: (ids: number[]) =>
     api.delete('/users', { data: { ids } })
 };
 
@@ -190,10 +207,23 @@ export interface VehicleHistory {
 }
 
 export const registrationApi = {
-  registerPermit: (data: RegistrationFormData) => 
+  registerPermit: (data: RegistrationFormData) =>
     api.post<{ success: boolean; message: string }>('/registerPermit', data),
-  
+
   getVehicleHistory: (data: { lot_code: string; license_plate: string }) =>
-    api.post<{ data: VehicleHistory[] }>('/vehicleHistory', data)
+    api.post<{ data: VehicleHistory[] }>('/vehicleHistory', data),
+
+  activateVehicle: (data: { 
+    vehicle_management_id: number; 
+    start_date: string; 
+    start_time: string; 
+    duration_hours: number;
+  }) =>
+    api.post<{ success: boolean; message: string }>('/vehicle/activate', data),
+
+  sendActivationEmail: (data: { vehicle_id: number; email: string }) =>
+    api.post<{ success: boolean; message: string }>('/vehicle/activate/email', data),
 };
+
+
 export default api;

@@ -18,37 +18,49 @@ const User: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [lastPage, setLastPage] = useState<number>(1);
+  const [perPage, setPerPage] = useState(5);
+
 
   useEffect(() => {
     fetchUsers();
-  }, [currentPage, rowsPerPage, inputValue]);
+  }, [currentPage, rowsPerPage, perPage]);
 
   const fetchUsers = async () => {
+    setLoading(true);
+    setError(null);
+  
     try {
-      setLoading(true);
       const response = await userApi.getAllUsers({
-        search: inputValue,
-        per_page: rowsPerPage === 'ALL' ? 'all' : rowsPerPage
+        per_page: perPage,
+        current_page: currentPage,
       });
-      setUsers(response.data.data);
-      setTotalRecords(response.data.total);
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch users');
+  
+      const { data, total, current_page, last_page } = response.data; // ✅ response.data contains data
+  
+      setUsers(data); // ✅ Ensure users is an array
+      setTotalUsers(total);
+      setCurrentPage(current_page);
+      setLastPage(last_page);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch users');
     } finally {
       setLoading(false);
     }
   };
+  
 
   const handleRowSelect = (id: number) => {
-    setSelectedRows(prev =>
-      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
+    setSelectedRows((prev) =>
+      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id],
     );
   };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedRows(users.map(user => user.id));
+      setSelectedRows(users.map((user) => user.id));
     } else {
       setSelectedRows([]);
     }
@@ -56,7 +68,7 @@ const User: React.FC = () => {
 
   const handleCopy = () => {
     const rowsToCopy = users
-      .filter(user => selectedRows.includes(user.id))
+      .filter((user) => selectedRows.includes(user.id))
       .map(({ username, role, note }) => `${username}\t${role}\t${note || ''}`)
       .join('\n');
 
@@ -65,15 +77,15 @@ const User: React.FC = () => {
   };
 
   const handleExport = () => {
-    const rowsToExport = users.filter(user => selectedRows.includes(user.id));
+    const rowsToExport = users.filter((user) => selectedRows.includes(user.id));
     const csvContent =
       'data:text/csv;charset=utf-8,' +
       ['Username,Role,Note,Properties']
         .concat(
           rowsToExport.map(
             ({ username, role, note, properties }) =>
-              `${username},${role},${note || ''},${properties.join(';')}`
-          )
+              `${username},${role},${note || ''},${properties.join(';')}`,
+          ),
         )
         .join('\n');
 
@@ -96,9 +108,36 @@ const User: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to delete users');
     }
   };
+    const filteredUsers= useMemo(() => {
+      if (!Array.isArray(users)) return [];
+  
+      return users.filter(
+        (user) =>
+          user.username
+            ?.toLowerCase()
+            .includes(inputValue.toLowerCase()) ||
+          user.note?.toLowerCase().includes(inputValue.toLowerCase()) ||
+          user.role?.toLowerCase().includes(inputValue.toLowerCase()),
+      );
+    }, [users, inputValue]);
 
+  const handleNextPage = () => {
+    if (currentPage < lastPage) {
+      setCurrentPage((prevPage) => prevPage + 1); // Go to the next page
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage((prevPage) => Math.max(1, prevPage - 1)); // Prevent going below page 1
+    }
+  };
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
   }
 
   if (error) {
@@ -113,7 +152,7 @@ const User: React.FC = () => {
     <div>
       <Breadcrumb pageName="Users and Access Management" />
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-        <div className="py-6 px-4 md:px-6 xl:px-7.5 flex justify-between max-sm:flex-col">
+        <div className="py-6 px-4 md:px-6 xl:px-7.5  h-[100px] flex justify-between max-sm:flex-col">
           <div className="flex gap-[7px] items-end">
             <input
               type="text"
@@ -155,21 +194,26 @@ const User: React.FC = () => {
           <div>
             {selectedRows.length > 0 && (
               <div className="flex space-x-2 mt-4">
+                <button className="bg-[#28a745] border border-[#28a745] text-black py-2 px-3 rounded-md hover:bg-[#218838] h-full text-sm font-semibold">
+                  No of selected rows: {selectedRows.length}
+                </button>
+
                 <button
                   onClick={handleCopy}
-                  className="bg-[#0dcaf0] border border-[#0dcaf0] text-black py-2 px-4 rounded-md hover:bg-[#31d2f2]"
+                  className="bg-[#0dcaf0] border border-[#0dcaf0] text-black py-2 px-3 rounded-md hover:bg-[#31d2f2] h-full text-sm font-semibold"
                 >
                   Copy ({selectedRows.length})
                 </button>
                 <button
                   onClick={handleExport}
-                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-4 rounded-md hover:bg-[#5c636a]"
+                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-3 rounded-md hover:bg-[#5c636a] h-full text-sm font-semibold"
                 >
                   Export ({selectedRows.length})
                 </button>
+
                 <button
                   onClick={() => setModalOpen(true)}
-                  className="bg-[#dc3545] text-white py-2 px-4 rounded-md hover:bg-[#bb2d3b]"
+                  className="bg-[#dc3545] text-white py-2 px-3 rounded-md hover:bg-[#bb2d3b] h-full text-sm font-semibold"
                 >
                   Delete ({selectedRows.length})
                 </button>
@@ -210,7 +254,7 @@ const User: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr
                   key={user.id}
                   className="border-t border-b border-stroke dark:border-strokedark"
@@ -240,7 +284,10 @@ const User: React.FC = () => {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-2">
-                      <Link to={`/user/edituser/${user.id}`} aria-label="Edit user">
+                      <Link
+                        to={`/user/edituser/${user.id}`}
+                        aria-label="Edit user"
+                      >
                         <SquarePen
                           className="text-primary"
                           width={20}
@@ -254,35 +301,38 @@ const User: React.FC = () => {
             </tbody>
           </table>
         </div>
-        {users.length === 0 && (
+        {filteredUsers.length === 0 && (
           <div className="py-4 text-center text-gray-500">
             No Users available
           </div>
         )}
         <div className="flex justify-between items-center py-3 px-6 max-sm:flex-col max-sm:gap-[10px]">
           <div className="flex items-center space-x-2">
-            <select
-              id="rowsPerPage"
-              className="border rounded ps-2 pe-3 py-1 text-md"
-              value={rowsPerPage}
-              onChange={(e) => {
-                const value = e.target.value;
-                setRowsPerPage(value === 'ALL' ? 'ALL' : parseInt(value, 10));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={500}>500</option>
-              <option value={1000}>1000</option>
-              <option value="ALL">ALL</option>
-            </select>
+          <select
+      id="rowsPerPage"
+      className="border rounded ps-2 pe-3 py-1 text-md"
+      value={rowsPerPage}
+      onChange={(e) => {
+        const value = e.target.value;
+        const updatedValue = value === "ALL" ? "ALL" : parseInt(value, 10);
+        
+        setRowsPerPage(updatedValue);
+        setPerPage(updatedValue); // Update perPage dynamically
+        setCurrentPage(1);
+      }}
+    >
+      <option value={5}>5</option>
+      <option value={10}>10</option>
+      <option value={100}>100</option>
+      <option value={500}>500</option>
+      <option value={1000}>1000</option>
+      <option value="ALL">ALL</option>
+    </select>
             <label htmlFor="rowsPerPage" className="text-sm text-gray-600">
-              Showing {users.length} of {totalRecords} users
+              Showing {currentPage} of {lastPage} 
             </label>
           </div>
-          <div>
+          {/* <div>
             <button
               className="mr-2 px-3 py-1 border rounded-md cursor-pointer"
               disabled={currentPage === 1}
@@ -294,6 +344,24 @@ const User: React.FC = () => {
               className="px-3 py-1 border rounded-md cursor-pointer"
               disabled={currentPage === Math.ceil(totalRecords / (rowsPerPage === 'ALL' ? totalRecords : rowsPerPage))}
               onClick={() => setCurrentPage((prev) => prev + 1)}
+            >
+              Next
+            </button>
+          </div> */}
+          <div className="pagination">
+            <button 
+              className="mr-2 px-3 py-1 border rounded-md cursor-pointer"
+            
+            onClick={handlePreviousPage} disabled={currentPage === 1}>
+              Previous
+            </button>
+            <span>
+            </span>
+            <button
+              className="px-3 py-1 border rounded-md cursor-pointer"
+
+              onClick={handleNextPage}
+              disabled={currentPage === lastPage}
             >
               Next
             </button>

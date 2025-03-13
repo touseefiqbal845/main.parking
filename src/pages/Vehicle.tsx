@@ -10,7 +10,7 @@ Modal.setAppElement('#root');
 
 const Vehicle: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [rowsPerPage, setRowsPerPage] = useState<number | 'ALL'>(25);
+  const [rowsPerPage, setRowsPerPage] = useState<number | 'ALL'>(5);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [vehiclesToDelete, setVehiclesToDelete] = useState<number[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -18,15 +18,27 @@ const Vehicle: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [total, setTotal] = useState<number>(0); 
+  const [lastPage, setLastPage] = useState<number>(1);
+  const [perPage, setPerPage] = useState(5);
+ 
 
   useEffect(() => {
+    console.log('Page or Rows per Page changed:', currentPage, rowsPerPage);
     fetchVehicles();
-  }, []);
+  }, [currentPage, rowsPerPage]); 
 
   const fetchVehicles = async () => {
     try {
-      const response = await vehicleApi.getAllVehicles();
-      setVehicles(Array.isArray(response.data.data) ? response.data.data : []);
+      const response = await vehicleApi.getAllVehicles({
+        page: currentPage,
+        per_page: rowsPerPage === 'ALL' ? total : perPage, 
+      });
+      const { data, total, current_page, last_page } = response.data;
+      setVehicles(Array.isArray(data) ? data : []);
+      setTotal(total);
+      setCurrentPage(current_page);
+      setLastPage(last_page);
     } catch (err) {
       console.error('Error fetching vehicles:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch vehicles');
@@ -37,10 +49,10 @@ const Vehicle: React.FC = () => {
 
   const handleRowSelect = (id: number) => {
     setSelectedRows((prev) =>
-      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id],
     );
   };
-
+console.log("vehicless",vehicles)
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
       setSelectedRows(vehicles.map((vehicle) => vehicle.id));
@@ -54,7 +66,7 @@ const Vehicle: React.FC = () => {
       .filter((vehicle) => selectedRows.includes(vehicle.id))
       .map(
         ({ license_plate, permit_id, status }) =>
-          `${license_plate}\t${permit_id}\t${status}`
+          `${license_plate}\t${permit_id}\t${status}`,
       )
       .join('\n');
 
@@ -64,16 +76,16 @@ const Vehicle: React.FC = () => {
 
   const handleExport = () => {
     const rowsToExport = vehicles.filter((vehicle) =>
-      selectedRows.includes(vehicle.id)
+      selectedRows.includes(vehicle.id),
     );
     const csvContent =
       'data:text/csv;charset=utf-8,' +
-      ['License Plate,Permit ID,Status,Start Date,End Date']
+      ['License Plate,`Permit ID`,Status,Start Date,End Date']
         .concat(
           rowsToExport.map(
             ({ license_plate, permit_id, status, start_date, end_date }) =>
-              `${license_plate},${permit_id},${status},${start_date},${end_date}`
-          )
+              `${license_plate},${permit_id},${status},${start_date},${end_date}`,
+          ),
         )
         .join('\n');
 
@@ -86,40 +98,89 @@ const Vehicle: React.FC = () => {
   };
   const handleDelete = async () => {
     try {
-      // Use Promise.all to delete each vehicle individually
-      await Promise.all(selectedRows.map(id => vehicleApi.deleteVehicle(id)));
-      await fetchVehicles(); // Refresh the list of vehicles
-      setSelectedRows([]); // Clear the selected rows
-      setModalOpen(false); // Close the modal
+      await Promise.all(selectedRows.map((id) => vehicleApi.deleteVehicle(id)));
+      await fetchVehicles(); 
+      setSelectedRows([]); 
+      setModalOpen(false); 
     } catch (err) {
       console.error('Error deleting vehicles:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete vehicles');
+      setError(
+        err instanceof Error ? err.message : 'Failed to delete vehicles',
+      );
     }
   };
 
   const filteredVehicles = useMemo(() => {
     if (!Array.isArray(vehicles)) return [];
-    
-    return vehicles.filter(vehicle => 
-      vehicle.license_plate?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      vehicle.permit_id?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      vehicle.status?.toLowerCase().includes(inputValue.toLowerCase())
+
+    return vehicles.filter(
+      (vehicle) =>
+        vehicle.license_plate
+          ?.toLowerCase()
+          .includes(inputValue.toLowerCase()) ||
+        vehicle.permit_id?.toLowerCase().includes(inputValue.toLowerCase()) ||
+        vehicle.status?.toLowerCase().includes(inputValue.toLowerCase()),
     );
   }, [vehicles, inputValue]);
 
   const currentRows = useMemo(() => {
     if (rowsPerPage === 'ALL') {
-      return filteredVehicles;
+      return filteredVehicles; 
     }
-    const indexOfLastRow = currentPage * rowsPerPage;
-    const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  
+    const rowsPerPageNumber = parseInt(rowsPerPage as string, 10);
+    if (isNaN(rowsPerPageNumber) || rowsPerPageNumber <= 0) {
+      return []; // Return an empty array if rowsPerPage is invalid
+    }
+  
+    const indexOfLastRow = currentPage * rowsPerPageNumber;
+    const indexOfFirstRow = indexOfLastRow - rowsPerPageNumber;
+  
     return filteredVehicles.slice(indexOfFirstRow, indexOfLastRow);
   }, [currentPage, filteredVehicles, rowsPerPage]);
 
-  const totalPages = rowsPerPage === 'ALL' ? 1 : Math.ceil(filteredVehicles.length / rowsPerPage);
+  const handleNextPage = () => {
+    if (currentPage < lastPage) {
+      setCurrentPage(prevPage => prevPage + 1); // Go to the next page
+    }
+  };
+  
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prevPage => Math.max(1, prevPage - 1)); // Prevent going below page 1
+    }
+  };
+  
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= lastPage) {
+      setCurrentPage(page); // Direct page change
+    }
+  };
+  
+  
+  const handleRowsPerPageChange = (event) => {
+    setRowsPerPage(event.target.value); // Update rows per page
+  };
+
+    
+  useEffect(() => {
+    console.log('Filtered Vehicles:', filteredVehicles);
+  }, [filteredVehicles]);
+  
+
+  
+  // Pagination handling
+  const totalPages =
+    rowsPerPage === 'ALL'
+      ? 1
+      : Math.ceil(filteredVehicles.length / rowsPerPage);
 
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
   }
 
   if (error) {
@@ -134,7 +195,7 @@ const Vehicle: React.FC = () => {
     <div>
       <Breadcrumb pageName="Vehicles" />
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-        <div className="py-6 px-4 md:px-6 xl:px-7.5 flex justify-between max-sm:flex-col">
+        <div className="py-6 px-4 md:px-6 xl:px-7.5 h-[100px] flex justify-between max-sm:flex-col">
           <div className="flex gap-[7px] items-end">
             <input
               type="text"
@@ -175,22 +236,27 @@ const Vehicle: React.FC = () => {
           </div>
           <div>
             {selectedRows.length > 0 && (
-              <div className="flex space-x-2 mt-4">
+              <div className="flex space-x-2 mt-2">
+                <button className="bg-[#28a745] border border-[#28a745] text-black py-2 px-3 rounded-md hover:bg-[#218838] h-full text-sm font-semibold">
+                  No of selected rows: {selectedRows.length}
+                </button>
+
                 <button
                   onClick={handleCopy}
-                  className="bg-[#0dcaf0] border border-[#0dcaf0] text-black py-2 px-4 rounded-md hover:bg-[#31d2f2]"
+                  className="bg-[#0dcaf0] border border-[#0dcaf0] text-black py-2 px-3 rounded-md hover:bg-[#31d2f2] h-full text-sm font-semibold"
                 >
                   Copy ({selectedRows.length})
                 </button>
                 <button
                   onClick={handleExport}
-                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-4 rounded-md hover:bg-[#5c636a]"
+                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-3 rounded-md hover:bg-[#5c636a] h-full text-sm font-semibold"
                 >
                   Export ({selectedRows.length})
                 </button>
+
                 <button
                   onClick={() => setModalOpen(true)}
-                  className="bg-[#dc3545] text-white py-2 px-4 rounded-md hover:bg-[#bb2d3b]"
+                  className="bg-[#dc3545] text-white py-2 px-3 rounded-md hover:bg-[#bb2d3b] h-full text-sm font-semibold"
                 >
                   Delete ({selectedRows.length})
                 </button>
@@ -214,7 +280,10 @@ const Vehicle: React.FC = () => {
                   License Plate
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-sm text-black dark:text-white">
-                  Permit ID
+                  `Permit ID`
+                </th>
+                <th className="px-4 py-2 text-left font-medium text-sm text-black dark:text-white">
+                  Lot Code
                 </th>
                 <th className="px-4 py-2 text-left font-medium text-sm text-black dark:text-white">
                   Status
@@ -237,7 +306,7 @@ const Vehicle: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {currentRows.map((vehicle) => (
+              {filteredVehicles.map((vehicle) => (
                 <tr
                   key={vehicle.id}
                   className="border-t border-b border-stroke dark:border-strokedark"
@@ -255,6 +324,9 @@ const Vehicle: React.FC = () => {
                   </td>
                   <td className="px-4 py-2 text-sm text-black dark:text-white">
                     {vehicle.permit_id}
+                  </td>
+                  <td className="px-4 py-2 text-sm text-black dark:text-white">
+                    {vehicle?.lot_number?.lot_code}
                   </td>
                   <td className="px-4 py-2 text-sm text-black dark:text-white">
                     <div
@@ -285,18 +357,20 @@ const Vehicle: React.FC = () => {
                     {vehicle.duration_type}
                   </td>
                   <td className="px-4 py-2 text-sm text-black dark:text-white">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      vehicle.is_active 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs ${
+                        vehicle.is_active
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
                       {vehicle.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-2">
                       <Link
-                        to={`/vehicles/editvehicle/${vehicle.id}`}
+                        to={`/vehicle/editvehicle/${vehicle.id}`}
                         aria-label="Edit vehicle"
                       >
                         <SquarePen
@@ -312,50 +386,59 @@ const Vehicle: React.FC = () => {
             </tbody>
           </table>
         </div>
-        {currentRows.length === 0 && (
+        {filteredVehicles.length === 0 && (
           <div className="py-4 text-center text-gray-500">
             No vehicles available
           </div>
         )}
         <div className="flex justify-between items-center py-3 px-6 max-sm:flex-col max-sm:gap-[10px]">
           <div className="flex items-center space-x-2">
-            <select
-              id="rowsPerPage"
-              className="border rounded ps-2 pe-3 py-1 text-md"
-              value={rowsPerPage}
-              onChange={(e) => {
-                const value = e.target.value;
-                setRowsPerPage(value === 'ALL' ? 'ALL' : parseInt(value, 10));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={500}>500</option>
-              <option value={1000}>1000</option>
-              <option value="ALL">ALL</option>
-            </select>
+          <select
+      id="rowsPerPage"
+      className="border rounded ps-2 pe-3 py-1 text-md"
+      value={rowsPerPage}
+      onChange={(e) => {
+        const value = e.target.value;
+        const updatedValue = value === "ALL" ? "ALL" : parseInt(value, 10);
+        
+        setRowsPerPage(updatedValue);
+        setPerPage(updatedValue); // Update perPage dynamically
+        setCurrentPage(1);
+      }}
+    >
+      <option value={5}>5</option>
+      <option value={10}>10</option>
+      <option value={100}>100</option>
+      <option value={500}>500</option>
+      <option value={1000}>1000</option>
+      <option value="ALL">ALL</option>
+    </select>
             {/* <label htmlFor="rowsPerPage" className="text-sm text-gray-600">
               Showing {currentRows.length} of {filteredVehicles.length} vehicles
             </label> */}
+              <label htmlFor="rowsPerPage" className="text-sm text-gray-600">
+              Showing {currentPage} of {lastPage} 
+            </label>
           </div>
-          <div>
-            <button
+          <div className="pagination">
+          <button 
               className="mr-2 px-3 py-1 border rounded-md cursor-pointer"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => prev - 1)}
-            >
+            
+            onClick={handlePreviousPage} disabled={currentPage === 1}>
               Previous
             </button>
+            <span>
+            </span>
             <button
               className="px-3 py-1 border rounded-md cursor-pointer"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => prev + 1)}
+
+              onClick={handleNextPage}
+              disabled={currentPage === lastPage}
             >
               Next
             </button>
           </div>
+        
         </div>
       </div>
       <Modal

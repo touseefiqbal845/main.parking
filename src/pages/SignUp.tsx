@@ -1,9 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { registrationApi } from '../../services/api';
 
-
 import { Undo2 } from 'lucide-react';
-
 
 type Errors = {
   lotcode: string;
@@ -47,9 +45,20 @@ const MultiStepForm: React.FC = () => {
     logoStyle: '',
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalVisibility, setModalVisibility] = useState(false); 
+  const [userEmail, setUserEmail] = useState("");
+  const [errorMessage, setErrorMessage] = useState(""); 
+  const [sendingStatus, setSendingStatus] = useState(false); 
   const [modalError, setModalError] = useState('');
   const [vehicleHistory, setVehicleHistory] = useState<VehicleHistory[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [errorMessagestep2, setErrorstep2] = useState(""); 
+
+  
+
+  const showModal = () => setModalVisibility(true); 
+  const hideModal = () => setModalVisibility(false); 
 
   const handleStartOver = () => {
     setCurrentStep(1); // Reset to step 1
@@ -66,45 +75,80 @@ const MultiStepForm: React.FC = () => {
       selectedColors: [],
       logoStyle: '',
     });
-    setErrors({ lotcode: '', licencePlate: '' }); // Clear errors
+    setErrors({ lotcode: '', licencePlate: '' });
   };
   ``;
 
-  const handleRegistration = async () => {
+  const activateVehicle = async () => {
     setIsLoading(true);
 
     try {
       //@ts-ignore
-      const registrationResponse = await registrationApi.registerPermit({
-        lot_code: formData.lotcode,
-        license_plate: formData.licencePlate,
-        email: formData.email,
-        duration: formData.duration,
-        start_date: formData.startDate,
-        end_date: formData.endDate,
+      const registrationResponse = await registrationApi.activateVehicle({
+        vehicle_management_id: 1,
+        start_date: '2025-07-10',
+        start_time: '14:00:00',
+        duration_hours: 24,
       });
 
       if (registrationResponse.data.success) {
         // Retrieve vehicle history after successful registration
-        const historyResponse = await registrationApi.getVehicleHistory({
-          lot_code: formData.lotcode,
-          license_plate: formData.licencePlate,
-        });
-        setVehicleHistory(historyResponse.data.data);
+        // const historyResponse = await registrationApi.getVehicleHistory({
+        //   lot_code: formData.lotcode,
+        //   license_plate: formData.licencePlate,
+        // });
+
+        // setVehicleHistory(historyResponse.data.data);
         alert('Vehicle registered successfully!');
-        setCurrentStep(3); // Move to Step 3 after success
+
+        setTimeout(() => {
+          setCurrentStep(3);
+        }, 3000);
       } else {
         alert('Error: ' + registrationResponse.data.message);
       }
-    } catch (error) {
-      alert('Registration failed. Please try again later.');
-      console.error(error);
+    } catch (error: any) {
+      console.error('touseef update error', error);
+      const errorMessage =
+        // error.response?.data?.message ||
+        'Something went wrong. Please try again.';
+
+      // Show error message in UI
+      setErrorstep2(errorMessage);
+
+      // Wait 3 seconds before resetting the step
+      // setTimeout(() => {
+      //   setCurrentStep(3);
+      // }, 3000);
     } finally {
       setIsLoading(false);
     }
   };
+  const handleSendEmail = async () => {
+    if (!userEmail) {
+      setErrorMessage("Please enter a valid email address.");
+      return;
+    }
 
+    setSendingStatus(true); // Set sending status to true
+    setErrorMessage(""); // Clear error message
 
+    try {
+      const response = await registrationApi.sendActivationEmail({
+        vehicle_id: 1, // Replace with dynamic vehicle ID if needed
+        email: userEmail,
+      });
+
+      console.log("Email Sent:", response);
+      alert("Email sent successfully!");
+      hideModal(); // Close modal after successful email sending
+    } catch (error) {
+      setErrorMessage("Failed to send email. Please try again.");
+      console.error("Email Sending Failed:", error);
+    } finally {
+      setSendingStatus(false); // Set sending status back to false
+    }
+  };
   const steps = [
     'Enter Lot & Plate Details',
     'Enter Permit Details!',
@@ -139,8 +183,6 @@ const MultiStepForm: React.FC = () => {
     }
   };
 
-
-
   const validateStep = () => {
     let isValid = true;
     const newErrors = { lotcode: '', licencePlate: '' };
@@ -158,32 +200,89 @@ const MultiStepForm: React.FC = () => {
     setErrors(newErrors);
     return isValid;
   };
+  const handleNext = async () => {
+    if (!validateStep()) return; // Stop if validation fails
 
-  const handleNext = () => {
-    if (validateStep()) {
+    if (currentStep === 1) {
+      // Call registration API before moving to Step 2
+      setIsLoading(true);
+      setError('');
+
+      try {
+        //@ts-ignore
+        const registrationResponse = await registrationApi.registerPermit({
+          lot_code: formData.lotcode,
+          license_plate: formData.licencePlate,
+          // email: formData.email,
+          // duration: formData.duration,
+          // start_date: formData.startDate,
+          // end_date: formData.endDate,
+        });
+
+        if (registrationResponse.data.success) {
+          // API success - move to Step 2
+          setErrorstep2('')
+          setCurrentStep(2);
+        } else {
+          setError('Error: ' + registrationResponse.data.message);
+        }
+      } catch (error: any) {
+        console.error('Registration error', error);
+        setError(
+          error.response?.data?.message ||
+            'Something went wrong. Please try again.',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // Move to the next step for other cases
       setCurrentStep((prev) => Math.min(prev + 1, steps.length));
     }
   };
+
+  // const handleNext = () => {
+  //   if (validateStep()) {
+  //     setCurrentStep((prev) => Math.min(prev + 1, steps.length));
+  //     setError('')
+  //   }
+  // };
 
   const handlePrev = () => {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
-  const openModal = () => {
+  const openModal = async () => {
     if (!formData.lotcode || !formData.licencePlate) {
       setModalError(
         'To view your vehicle permit history, please first enter your access code and license plate.',
       );
-      setIsModalOpen(true);
       return;
     }
-    setModalError(''); // Clear error if fields are valid
-    setIsModalOpen(true);
+
+    setModalError('');
+
+    try {
+      const historyResponse = await registrationApi.getVehicleHistory({
+        lot_code: formData.lotcode,
+        license_plate: formData.licencePlate,
+      });
+
+      const data = historyResponse.data.history || []; // Ensure it's always an array
+      console.log('Fetched Data:', data);
+
+      setVehicleHistory(data);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching vehicle history:', error);
+      setModalError('Failed to fetch vehicle history. Please try again.');
+    }
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setModalError('');
+    setVehicleHistory([]);
   };
 
   const handlePrintReceipt = () => {
@@ -238,6 +337,19 @@ const MultiStepForm: React.FC = () => {
               <p className="text-red-600 my-2 text-sm">{errors.licencePlate}</p>
             )}
           </div>
+          {error && (
+            <p
+              style={{
+                color: 'red',
+                fontWeight: 'bold',
+                marginTop: 5,
+                marginBottom: 10,
+                textAlign: 'center',
+              }}
+            >
+              {error}!
+            </p>
+          )}
 
           <div className="flex justify-between mb-3">
             <button
@@ -274,8 +386,9 @@ const MultiStepForm: React.FC = () => {
         {isModalOpen && (
           <div className="fixed inset-0 bg-gray-800 bg-opacity-50 flex justify-center items-start pt-10">
             <div
-              className={`bg-white rounded-lg shadow-lg transform transition-transform ${modalError ? 'w-2/3 md:w-1/3' : 'w-11/12 md:w-2/3 lg:w-1/2'
-                }`}
+              className={`bg-white rounded-lg shadow-lg transform transition-transform ${
+                modalError ? 'w-2/3 md:w-1/3' : 'w-11/12 md:w-2/3 lg:w-1/2'
+              }`}
             >
               <div className="flex justify-between items-center p-4 border-b">
                 <h3 className="text-lg font-semibold">
@@ -291,10 +404,10 @@ const MultiStepForm: React.FC = () => {
               <div className="p-4">
                 {modalError ? (
                   <p className="text-red-600 text-center">{modalError}</p>
-                ) : (
+                ) : vehicleHistory.length > 0 ? (
                   <table className="w-full border-collapse">
                     <thead>
-                      <tr className="border-b border-gray-300 text-justify">
+                      <tr className="border-b border-gray-300 text-left bg-gray-100">
                         <th className="px-4 py-2">Lot Code</th>
                         <th className="px-4 py-2">Access Code</th>
                         <th className="px-4 py-2">License Plate</th>
@@ -303,30 +416,68 @@ const MultiStepForm: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {vehicleHistory.length > 0 ? (
-                        vehicleHistory.map((history, index) => (
-                          <tr key={index} className="border-b border-gray-300 text-justify">
-                            <td className="px-4 py-2">{history.lot_code}</td>
-                            <td className="px-4 py-2">{history.access_code}</td>
-                            <td className="px-4 py-2">{history.license_plate}</td>
-                            <td className="px-4 py-2">{history.permit_start}</td>
-                            <td className="px-4 py-2">{history.permit_end}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={5} className="px-4 py-2 text-center">
-                            No vehicle history available.
+                      {vehicleHistory.map((history, index) => (
+                        <tr key={index} className="border-b border-gray-300">
+                          <td className="px-4 py-2">{history.lot_number_id}</td>{' '}
+                          {/* Corrected */}
+                          <td className="px-4 py-2">{history.status}</td>{' '}
+                          {/* No access_code in API, using status */}
+                          <td className="px-4 py-2">{history.license_plate}</td>
+                          <td className="px-4 py-2">
+                            {new Date(history.start_date).toLocaleDateString(
+                              'en-CA',
+                            )}{' '}
+                            {/* YYYY/MM/DD */}
+                          </td>
+                          <td className="px-4 py-2">
+                            {new Date(history.end_date).toLocaleDateString(
+                              'en-CA',
+                            )}{' '}
+                            {/* YYYY/MM/DD */}
                           </td>
                         </tr>
-                      )}
+                      ))}
                     </tbody>
                   </table>
+                ) : (
+                  <p className="text-center">No vehicle history available.</p>
                 )}
               </div>
             </div>
           </div>
         )}
+
+
+{modalVisibility && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-900 bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Email Receipt</h2>
+              <button onClick={hideModal} className="text-gray-500 hover:text-gray-700">✖</button>
+            </div>
+            <p className="text-gray-600 mb-4">
+              To receive an email, enter your email address.
+            </p>
+            <input
+              type="email"
+              value={userEmail}
+              onChange={(e) => setUserEmail(e.target.value)} // Update email state
+              placeholder="Enter your email"
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-300"
+            />
+            {errorMessage && <p className="text-red-500 mt-2">{errorMessage}</p>} {/* Show error message if any */}
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSendEmail}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                disabled={sendingStatus} // Disable button while sending
+              >
+                {sendingStatus ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
         <div className={`step ${currentStep === 2 ? 'block' : 'hidden'}`}>
           <h2 className="text-2xl text-indigo-600 mb-6 text-center font-bold">
@@ -353,6 +504,19 @@ const MultiStepForm: React.FC = () => {
               after booking. Plan accordingly to avoid issues.
             </p>
           </div>
+          {errorMessagestep2 && (
+            <p
+              style={{
+                color: 'red',
+                fontWeight: 'bold',
+                marginTop: 5,
+                marginBottom: 10,
+                textAlign: 'center',
+              }}
+            >
+              {errorMessagestep2}!
+            </p>
+          )}
 
           {/* Start Date/Time */}
           <div className="mb-6">
@@ -442,7 +606,7 @@ const MultiStepForm: React.FC = () => {
               <button
                 type="button"
                 className="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-primary"
-                onClick={handleRegistration}
+                onClick={activateVehicle}
                 disabled={isLoading}
               >
                 {isLoading ? 'Registering...' : 'Register Vehicle'}
@@ -468,25 +632,30 @@ const MultiStepForm: React.FC = () => {
           {/* Registration Details */}
           <div className="mb-6">
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">Access Code:</span> {formData.lotcode || 'N/A'}
+              <span className="font-bold">Access Code:</span>{' '}
+              {formData.lotcode || 'N/A'}
             </p>
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">License Plate:</span> {formData.licencePlate || 'N/A'}
+              <span className="font-bold">License Plate:</span>{' '}
+              {formData.licencePlate || 'N/A'}
             </p>
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">Start Date:</span> {formData.startDate || 'N/A'}
+              <span className="font-bold">Start Date:</span>{' '}
+              {formData.startDate || 'N/A'}
             </p>
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">End Date:</span> {formData.endDate || 'N/A'}
+              <span className="font-bold">End Date:</span>{' '}
+              {formData.endDate || 'N/A'}
             </p>
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">Create Date:</span> {new Date().toLocaleString()}
+              <span className="font-bold">Create Date:</span>{' '}
+              {new Date().toLocaleString()}
             </p>
             <p className="text-gray-800 mb-1">
-              <span className="font-bold">Txn Record:</span> {formData.txnRecord || 'N/A'}
+              <span className="font-bold">Txn Record:</span>{' '}
+              {formData.txnRecord || 'N/A'}
             </p>
           </div>
-
 
           {/* Success Message */}
           <div className="mb-6 p-4 bg-green-100 border-l-4 border-green-500 rounded">
@@ -508,7 +677,7 @@ const MultiStepForm: React.FC = () => {
               <button
                 type="button"
                 className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600"
-              // onClick={handleEmailReceipt}
+                onClick={showModal}
               >
                 Email Receipt
               </button>

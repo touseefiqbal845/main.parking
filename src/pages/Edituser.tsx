@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Breadcrumb from '../components/Breadcrumbs/Breadcrumb';
 import Modal from 'react-modal';
 import '../css/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
-
+import { useNavigate, useParams } from 'react-router-dom';
+import { userApi } from '../../services/api';
 Modal.setAppElement('#root');
+
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.8 },
   visible: { opacity: 1, scale: 1 },
   exit: { opacity: 0, scale: 0.8 },
 };
+
 const tickVariants = {
   hidden: { rotate: 0, opacity: 0 },
   visible: { rotate: 360, opacity: 1 },
@@ -21,13 +24,61 @@ const messageVariants = {
 };
 
 const Edituser: React.FC = () => {
+  const { id } = useParams();  // Extract user ID from the URL
   const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [userData, setUserData] = useState<any>(null);  // State to hold user data
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    role: '',
+    note: '',
+  });  // Form data state
+  const navigate = useNavigate();
+
+  // Fetch user data when the component mounts
+  useEffect(() => {
+    if (id) {
+      userApi.getAllUsers().then(response => {
+        const user = response.data.data.find(user => user.id === parseInt(id));  // Access the 'data' array before finding the user
+        if (user) {
+          setUserData(user);  // Set the fetched user data
+          setFormData({
+            username: user.username || '',
+            password: '',  // Assuming password is either empty or will be updated
+            role: user.role || '',  // Ensure you're getting the role from the user data
+            note: user.note || '',
+          });
+        }
+      }).catch(error => {
+        console.error('Error fetching users:', error);  // Log any errors for debugging
+      });
+    }
+  }, [id]);
+  
+  
 
   const closeModal = () => setModalIsOpen(false);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+  
+    // Send all formData values as the update request
+    const updateData: Partial<any> = {
+      username: formData.username,
+      password: formData.password,
+      role: formData.role,
+      note: formData.note,
+    };
+  
+    // Make API call to update the user
+    userApi.updateUser(id, updateData).then(() => {
+
+    });
     setModalIsOpen(true);
-  };
+    setTimeout(() => {
+      navigate('/users');  
+    }, 3000); };
+  
 
   return (
     <div className="mx-auto">
@@ -35,7 +86,6 @@ const Edituser: React.FC = () => {
       <form onSubmit={handleSubmit}>
         <div className="accordion">
           <div className="accordion-item">
-            {/* <h2 className="accordion-header">New User Information</h2> */}
             <div className="accordion-content active">
               <div className="space-y-6 p-4 bg-white">
                 <div className="grid grid-cols-2 gap-6">
@@ -50,12 +100,14 @@ const Edituser: React.FC = () => {
                       id="username"
                       name="username"
                       type="text"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                       className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    ></input>
+                    />
                   </div>
                   <div>
                     <label
-                      htmlFor="username"
+                      htmlFor="password"
                       className="block text-sm font-bold text-gray-700"
                     >
                       Password
@@ -63,9 +115,11 @@ const Edituser: React.FC = () => {
                     <input
                       id="password"
                       name="password"
-                      type="number"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    ></input>
+                    />
                   </div>
                   <div>
                     <label
@@ -77,11 +131,13 @@ const Edituser: React.FC = () => {
                     <select
                       id="role"
                       name="role"
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                       className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                     >
                       <option value="">Select Role</option>
-                      <option value="">Admin</option>
-                      <option value="">Property Manager</option>
+                      <option value="Admin">Admin</option>
+                      <option value="Property Manager">Property Manager</option>
                     </select>
                   </div>
                   <div>
@@ -95,8 +151,10 @@ const Edituser: React.FC = () => {
                       id="note"
                       name="note"
                       type="text"
+                      value={formData.note}
+                      onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                       className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    ></input>
+                    />
                   </div>
                 </div>
               </div>

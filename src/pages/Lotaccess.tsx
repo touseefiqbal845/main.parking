@@ -10,7 +10,7 @@ Modal.setAppElement('#root');
 
 const Lotaccess: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [rowsPerPage, setRowsPerPage] = useState<number | 'ALL'>(25);
+  const [rowsPerPage, setRowsPerPage] = useState<number | 'ALL'>(5);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [lotToDelete, setLotToDelete] = useState<number | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -18,29 +18,42 @@ const Lotaccess: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
+ const [total, setTotal] = useState<number>(0);
+  const [lastPage, setLastPage] = useState<number>(1);
+  const [perPage, setPerPage] = useState(5);
+
 
   useEffect(() => {
+    console.log('Page or Rows per Page changed:', currentPage, rowsPerPage);
     fetchLots();
-  }, []);
+  }, [currentPage, rowsPerPage]);
 
   const fetchLots = async () => {
+    setLoading(true);
     try {
-      const response = await lotApi.getAllLots();
-      // Ensure we're getting an array from the response
-      const lotsData = Array.isArray(response.data) ? response.data : 
-                      Array.isArray(response.data.data) ? response.data.data : [];
-      setLots(lotsData);
+      const response = await lotApi.getAllLots({
+        page: currentPage,
+        per_page: rowsPerPage === 'ALL' ? total : perPage,
+      });
+      const { data, total, current_page, last_page } = response.data;
+
+      setLots(data);
+      setTotal(total);
+      setCurrentPage(current_page);
+      setLastPage(last_page);
     } catch (err) {
+      setError('Error fetching lots');
       console.error('Error fetching lots:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch lots');
     } finally {
       setLoading(false);
     }
   };
+  console.log('lots', lots);
+
 
   const handleRowSelect = (id: number) => {
     setSelectedRows((prev) =>
-      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((rowId) => rowId !== id) : [...prev, id],
     );
   };
 
@@ -51,6 +64,26 @@ const Lotaccess: React.FC = () => {
       setSelectedRows([]);
     }
   };
+
+  const handleCopy = () => {
+    const rowsToCopy = lots
+      .filter((lot) => selectedRows.includes(lot.id))
+      .map(
+        ({ lot_code, address, city, created_at }) => {
+          const formattedDate = new Date(created_at)
+            .toISOString()
+            .replace('T', ' ') // Replace the 'T' with a space to match your format
+            .substring(0, 19); // Extract the first 19 characters (YYYY-MM-DD HH:MM:SS)
+            
+          return `${lot_code}\t${address}\t${city}\t${formattedDate}`;
+        }
+      )
+      .join('\n');
+  
+    navigator.clipboard.writeText(rowsToCopy);
+    alert('Rows copied to clipboard!');
+  };
+  
 
   const handleExport = async () => {
     try {
@@ -70,7 +103,7 @@ const Lotaccess: React.FC = () => {
 
   const handleDelete = async () => {
     try {
-      await Promise.all(selectedRows.map(id => lotApi.deleteLot(id)));
+      await Promise.all(selectedRows.map((id) => lotApi.deleteLot(id)));
       await fetchLots();
       setSelectedRows([]);
       setModalOpen(false);
@@ -82,27 +115,67 @@ const Lotaccess: React.FC = () => {
 
   const filteredLots = useMemo(() => {
     if (!Array.isArray(lots)) return [];
-    
-    return lots.filter(lot => 
-      lot.lot_code?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      lot.address?.toLowerCase().includes(inputValue.toLowerCase()) ||
-      lot.city?.toLowerCase().includes(inputValue.toLowerCase())
+
+    return lots.filter(
+      (lot) =>
+        lot.lot_code?.toLowerCase().includes(inputValue.toLowerCase()) ||
+        lot.address?.toLowerCase().includes(inputValue.toLowerCase()) ||
+        lot.city?.toLowerCase().includes(inputValue.toLowerCase()),
     );
   }, [lots, inputValue]);
 
+ 
   const currentRows = useMemo(() => {
     if (rowsPerPage === 'ALL') {
       return filteredLots;
     }
-    const indexOfLastRow = currentPage * rowsPerPage;
-    const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+
+    const rowsPerPageNumber = parseInt(rowsPerPage as string, 10);
+    if (isNaN(rowsPerPageNumber) || rowsPerPageNumber <= 0) {
+      return []; // Return an empty array if rowsPerPage is invalid
+    }
+
+    const indexOfLastRow = currentPage * rowsPerPageNumber;
+    const indexOfFirstRow = indexOfLastRow - rowsPerPageNumber;
+
     return filteredLots.slice(indexOfFirstRow, indexOfLastRow);
   }, [currentPage, filteredLots, rowsPerPage]);
 
-  const totalPages = rowsPerPage === 'ALL' ? 1 : Math.ceil(filteredLots.length / rowsPerPage);
+  const handleNextPage = () => {
+    if (currentPage < lastPage) {
+      setCurrentPage((prevPage) => prevPage + 1); // Go to the next page
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage((prevPage) => Math.max(1, prevPage - 1)); // Prevent going below page 1
+    }
+  };
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= lastPage) {
+      setCurrentPage(page); // Direct page change
+    }
+  };
+
+  const handleRowsPerPageChange = (event) => {
+    setRowsPerPage(event.target.value); // Update rows per page
+  };
+
+  useEffect(() => {
+    console.log('Filtered Vehicles:', filteredLots);
+  }, [filteredLots]);
+
+  const totalPages =
+    rowsPerPage === 'ALL' ? 1 : Math.ceil(filteredLots.length / rowsPerPage);
 
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        Loading...
+      </div>
+    );
   }
 
   if (error) {
@@ -117,7 +190,7 @@ const Lotaccess: React.FC = () => {
     <div>
       <Breadcrumb pageName="Lots" />
       <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-        <div className="py-6 px-4 md:px-6 xl:px-7.5 flex justify-between max-sm:flex-col">
+        <div className="py-6 px-4 md:px-6 xl:px-7.5 flex h-[100px] justify-between max-sm:flex-col">
           <div className="flex gap-[7px] items-end">
             <input
               type="text"
@@ -159,15 +232,26 @@ const Lotaccess: React.FC = () => {
           <div>
             {selectedRows.length > 0 && (
               <div className="flex space-x-2 mt-4">
+                 <button className="bg-[#28a745] border border-[#28a745] text-black py-2 px-3 rounded-md hover:bg-[#218838] h-full text-sm font-semibold">
+                  No of selected rows: {selectedRows.length}
+                </button>
+
+                <button
+                  onClick={handleCopy}
+                  className="bg-[#0dcaf0] border border-[#0dcaf0] text-black py-2 px-3 rounded-md hover:bg-[#31d2f2] h-full text-sm font-semibold"
+                >
+                  Copy ({selectedRows.length})
+                </button>
                 <button
                   onClick={handleExport}
-                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-4 rounded-md hover:bg-[#5c636a]"
+                  className="bg-[#6c757d] text-white border border-[#6c757d] py-2 px-3 rounded-md hover:bg-[#5c636a] h-full text-sm font-semibold"
                 >
                   Export ({selectedRows.length})
                 </button>
+
                 <button
                   onClick={() => setModalOpen(true)}
-                  className="bg-[#dc3545] text-white py-2 px-4 rounded-md hover:bg-[#bb2d3b]"
+                  className="bg-[#dc3545] text-white py-2 px-3 rounded-md hover:bg-[#bb2d3b] h-full text-sm font-semibold"
                 >
                   Delete ({selectedRows.length})
                 </button>
@@ -214,7 +298,7 @@ const Lotaccess: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {currentRows.map((lot) => (
+              {filteredLots.map((lot) => (
                 <tr
                   key={lot.id}
                   className="border-t border-b border-stroke dark:border-strokedark"
@@ -244,11 +328,10 @@ const Lotaccess: React.FC = () => {
                   </td>
                   <td className="px-4 py-2 text-sm text-black dark:text-white">
                     <div
-                      className={`lot-status-badge text-center px-2 py-1 text-xs font-semibold rounded-sm uppercase ${
-                        lot.status === 'Free'
+                      className={`lot-status-badge text-center px-2 py-1 text-xs font-semibold rounded-sm uppercase ${lot.status === 'Free'
                           ? 'bg-green-100 text-green-800'
                           : 'bg-blue-100 text-blue-800'
-                      }`}
+                        }`}
                     >
                       {lot.status}
                     </div>
@@ -272,43 +355,51 @@ const Lotaccess: React.FC = () => {
             </tbody>
           </table>
         </div>
-        {currentRows.length === 0 && (
+        {filteredLots.length === 0 && (
           <div className="py-4 text-center text-gray-500">
             No Lots available
           </div>
         )}
         <div className="flex justify-between items-center py-3 px-6 max-sm:flex-col max-sm:gap-[10px]">
           <div className="flex items-center space-x-2">
-            <select
-              id="rowsPerPage"
-              className="border rounded ps-2 pe-3 py-1 text-md"
-              value={rowsPerPage}
-              onChange={(e) => {
-                const value = e.target.value;
-                setRowsPerPage(value === 'ALL' ? 'ALL' : parseInt(value, 10));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={500}>500</option>
-              <option value={1000}>1000</option>
-              <option value="ALL">ALL</option>
-            </select>
+          <select
+      id="rowsPerPage"
+      className="border rounded ps-2 pe-3 py-1 text-md"
+      value={rowsPerPage}
+      onChange={(e) => {
+        const value = e.target.value;
+        const updatedValue = value === "ALL" ? "ALL" : parseInt(value, 10);
+        
+        setRowsPerPage(updatedValue);
+        setPerPage(updatedValue); // Update perPage dynamically
+        setCurrentPage(1);
+      }}
+    >
+      <option value={5}>5</option>
+      <option value={10}>10</option>
+      <option value={100}>100</option>
+      <option value={500}>500</option>
+      <option value={1000}>1000</option>
+      <option value="ALL">ALL</option>
+    </select>
+            <label htmlFor="rowsPerPage" className="text-sm text-gray-600">
+              Showing {currentPage} of {lastPage} 
+            </label>
           </div>
-          <div>
-            <button
+          <div className="pagination">
+          <button 
               className="mr-2 px-3 py-1 border rounded-md cursor-pointer"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => prev - 1)}
-            >
+            
+            onClick={handlePreviousPage} disabled={currentPage === 1}>
               Previous
             </button>
+            <span>
+            </span>
             <button
               className="px-3 py-1 border rounded-md cursor-pointer"
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((prev) => prev + 1)}
+
+              onClick={handleNextPage}
+              disabled={currentPage === lastPage}
             >
               Next
             </button>

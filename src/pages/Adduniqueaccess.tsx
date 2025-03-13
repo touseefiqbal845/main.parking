@@ -5,6 +5,7 @@ import '../css/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import { lotApi, accessCodeApi } from '../../services/api';
 import { Lot } from '../../services/api';
+import { Navigate, useNavigate } from 'react-router-dom';
 
 Modal.setAppElement('#root');
 
@@ -25,6 +26,7 @@ const messageVariants = {
 };
 
 const Adduniqueaccess: React.FC = () => {
+   const navigate = useNavigate();
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,6 +93,10 @@ const Adduniqueaccess: React.FC = () => {
 
       // Show success modal
       setModalIsOpen(true);
+      setTimeout(() => {
+        navigate('/uniqueaccess');  
+      }, 3000);  
+      
     } catch (err) {
       console.error('Error creating access codes:', err);
       setError(err instanceof Error ? err.message : 'Failed to create access codes');

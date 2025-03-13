@@ -72,6 +72,10 @@ const Adduser: React.FC = () => {
         properties: selectedProperties
       });
       setModalIsOpen(true);
+      setTimeout(() => {
+        navigate('/users');  
+      }, 3000);
+      
     } catch (err) {
       console.error('Error creating user:', err);
       setError(err instanceof Error ? err.message : 'Failed to create user');

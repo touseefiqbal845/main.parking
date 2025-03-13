@@ -11,6 +11,7 @@ import '../css/style.css';
 import { motion, AnimatePresence } from 'framer-motion';
 import { lotApi, vehicleApi, Lot, Vehicle } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 Modal.setAppElement('#root');
 
@@ -36,6 +37,7 @@ const AddVehicle: React.FC = () => {
   const [lots, setLots] = useState<Lot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [getvehicles, setGetVehicles] = useState<[]>([]);
 
   const [formData, setFormData] = useState({
     lot_number_id: '',
@@ -45,6 +47,33 @@ const AddVehicle: React.FC = () => {
     duration_type: '1 Day' as Vehicle['duration_type'],
     vehicles: '',
   });
+
+  useEffect(() => {
+    if (formData.start_date && formData.end_date) {
+      const startDate = new Date(formData.start_date);
+      const endDate = new Date(formData.end_date);
+      const diffInDays = Math.ceil(
+        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      let newDuration = '1 Day';
+      if (diffInDays >= 7 && diffInDays < 30) {
+        newDuration = '7 Days';
+      } else if (diffInDays >= 30 && diffInDays < 365) {
+        newDuration = '1 Month';
+      } else if (diffInDays >= 365 && diffInDays < 1825) {
+        newDuration = '1 Year';
+      } else if (diffInDays >= 1825) {
+        newDuration = '5 Years';
+      }
+
+      //@ts-ignore
+      setFormData((prev) => ({
+        ...prev,
+        duration_type: newDuration,
+      }));
+    }
+  }, [formData.start_date, formData.end_date]);
 
   useEffect(() => {
     fetchLots();
@@ -60,18 +89,22 @@ const AddVehicle: React.FC = () => {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   const handleDurationClick = (duration: Vehicle['duration_type']) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      duration_type: duration
+      duration_type: duration,
     }));
   };
 
@@ -80,38 +113,111 @@ const AddVehicle: React.FC = () => {
     navigate('/vehicles');
   };
 
+  useEffect(() => {
+    if (!formData.vehicles) {
+      fetchVehicles();
+    }
+  }, [formData.vehicles]);
+
+  const fetchVehicles = async () => {
+    try {
+      const response = await vehicleApi.getAllVehicles();
+      const vehiclesData = Array.isArray(response.data.data)
+        ? response.data.data
+        : [];
+
+      // Save the fetched vehicles to localStorage
+      localStorage.setItem('vehicles', JSON.stringify(vehiclesData));
+
+      setGetVehicles(vehiclesData);
+    } catch (err) {
+      console.error('Error fetching vehicles:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch vehicles');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    const storedVehicles = JSON.parse(localStorage.getItem('vehicles') || '[]');
+
+    if (storedVehicles.length === 0) {
+      setError('No vehicles data available.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Parse vehicles from textarea
       const vehicles = formData.vehicles
         .split('\n')
-        .filter(line => line.trim())
-        .map(line => {
-          const [license_plate, permit_id] = line.split(',').map(s => s.trim());
+        .filter((line) => line.trim())
+        .map((line) => {
+          const [license_plate, permit_id] = line
+            .split(',')
+            .map((s) => s.trim());
           return { license_plate, permit_id };
         });
 
-      if (vehicles.length === 0) {
+      const seen = new Set();
+      const uniqueVehicles = [];
+
+      for (const vehicle of vehicles) {
+        const uniqueKey = `${vehicle.license_plate}-${vehicle.permit_id}`;
+        if (seen.has(uniqueKey)) {
+          throw new Error(
+            `Duplicate entry detected: ${vehicle.license_plate} with permit ID ${vehicle.permit_id}`,
+          );
+        }
+        seen.add(uniqueKey);
+        uniqueVehicles.push(vehicle);
+      }
+
+      if (uniqueVehicles.length === 0) {
         throw new Error('Please enter at least one vehicle entry');
       }
 
+      // Check if the new vehicles already exist in the stored vehicles
+      const existingPermitIds = new Set(storedVehicles.map((v) => v.permit_id));
+      const existingLicensePlates = new Set(
+        storedVehicles.map((v) => v.license_plate),
+      );
+
+      const newVehicles = uniqueVehicles.filter(
+        (vehicle) =>
+          !existingPermitIds.has(vehicle.permit_id) &&
+          !existingLicensePlates.has(vehicle.license_plate),
+      );
+
+      if (newVehicles.length === 0) {
+        throw new Error(
+          'A vehicle with the same permit ID or license plate already exists.',
+        );
+      }
+
+      // Send the new unique vehicles to API
       await vehicleApi.bulkCreateVehicles({
         lot_number_id: parseInt(formData.lot_number_id),
         status: formData.status as Vehicle['status'],
         start_date: formData.start_date,
         end_date: formData.end_date,
         duration_type: formData.duration_type,
-        vehicles
+        vehicles: newVehicles,
       });
 
-      setModalIsOpen(true);
+      setModalIsOpen(true); // Show success modal
+      setTimeout(() => {
+        navigate('/vehicles');  
+      }, 3000);
+
     } catch (err) {
       console.error('Error creating vehicles:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create vehicles');
+      setError(
+        err instanceof Error ? err.message : 'Failed to create vehicles',
+      );
     } finally {
       setLoading(false);
     }
@@ -146,7 +252,7 @@ const AddVehicle: React.FC = () => {
                     required
                   >
                     <option value="">Select Lot Code</option>
-                    {lots.map(lot => (
+                    {lots.map((lot) => (
                       <option key={lot.id} value={lot.id}>
                         {lot.lot_code}
                       </option>
@@ -214,22 +320,22 @@ const AddVehicle: React.FC = () => {
                 </div>
               </div>
               <div className="flex space-x-2 flex-wrap gap-y-3">
-                {(['1 Day', '7 Days', '1 Month', '1 Year', '5 Years'] as const).map(
-                  (duration) => (
-                    <button
-                      type="button"
-                      key={duration}
-                      onClick={() => handleDurationClick(duration)}
-                      className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                        formData.duration_type === duration
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-gray-700 bg-gray-100 border border-gray-300 hover:bg-gray-200'
-                      } focus:outline-none focus:ring focus:ring-indigo-500`}
-                    >
-                      {duration}
-                    </button>
-                  ),
-                )}
+                {(
+                  ['1 Day', '7 Days', '1 Month', '1 Year', '5 Years'] as const
+                ).map((duration) => (
+                  <button
+                    type="button"
+                    key={duration}
+                    // onClick={() => handleDurationClick(duration)} // This will update the selected duration
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      formData.duration_type === duration
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-700 bg-gray-100 border border-gray-300 hover:bg-gray-200'
+                    } focus:outline-none `}
+                  >
+                    {duration}
+                  </button>
+                ))}
               </div>
               <div>
                 <label
@@ -237,7 +343,9 @@ const AddVehicle: React.FC = () => {
                   className="block text-sm font-bold text-gray-700"
                 >
                   Enter each entry in the format:{' '}
-                  <code className="bg-gray-100 px-1 py-0.5 rounded">licensePlate, permitId</code>
+                  <code className="bg-gray-100 px-1 py-0.5 rounded">
+                    licensePlate, permitId
+                  </code>
                 </label>
                 <textarea
                   id="vehicles"
@@ -260,7 +368,7 @@ const AddVehicle: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="px-10 py-2 text-white bg-[#764ba2 ] rounded-lg border hover:bg-white hover:text-[#764ba2] hover:border hover:border-[#764ba2] hover:scale-105 transition ease-in-out disabled:opacity-50"
+            className="px-10 py-2 text-white bg-indigo-600 rounded-lg border hover:bg-white hover:text-[#764ba2] hover:border hover:border-[#764ba2] hover:scale-105 transition ease-in-out disabled:opacity-50"
           >
             {loading ? 'Adding...' : 'Add'}
           </button>
@@ -309,6 +417,11 @@ const AddVehicle: React.FC = () => {
               >
                 Vehicles added successfully!
               </motion.h1>
+              <p className="mt-4 text-lg font-semibold">
+                Total Vehicles:{' '}
+                {JSON.parse(localStorage.getItem('vehicles') || '[]').length}
+              </p>
+
               <button
                 className="mt-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                 onClick={closeModal}

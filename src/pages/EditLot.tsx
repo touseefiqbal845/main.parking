@@ -30,6 +30,9 @@ const EditLot: React.FC = () => {
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(''); // Local state for start date
+  const [endDate, setEndDate] = useState(''); // Lo
+  const [durationType, setDurationType] = useState('1 Day');
 
   // State for form data
   const [formData, setFormData] = useState({
@@ -37,7 +40,7 @@ const EditLot: React.FC = () => {
     address: '',
     city: '',
     permits_per_month: 0,
-    duration: '',
+    duration: '1 Day',
     status: 'Free' as 'Free' | 'FreePaid',
     note: '',
     pricing: null as any,
@@ -74,42 +77,69 @@ const EditLot: React.FC = () => {
     '17 hours', '18 hours', '19 hours', '20 hours', '21 hours', '22 hours',
     '23 hours', '24 hours'
   ];
+ // Handle date change
+ const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const { name, value } = e.target;
+  if (name === 'start_date') {
+    setStartDate(value);
+  } else if (name === 'end_date') {
+    setEndDate(value);
+  }
+};
 
-  // Fetch lot data on component mount
-  useEffect(() => {
-    const fetchLotData = async () => {
-      try {
-        if (id) {
-          const response = await lotApi.getLot(parseInt(id));
-          const { lot_code, address, city, permits_per_month, duration, status, note, pricing } = response.data;
+// Duration calculation based on start and end date
+useEffect(() => {
+  if (startDate && endDate) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffInDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
 
-          // Set initial state based on fetched data
-          setFormData({
-            lot_code,
-            address,
-            city,
-            permits_per_month: permits_per_month || 0,
-            duration: duration || '',
-            status,
-            note: note || '',
-            pricing: pricing || null,
-          });
+    let newDuration = '1 Day';
+    if (diffInDays >= 7 && diffInDays < 30) {
+      newDuration = '7 Days';
+    } else if (diffInDays >= 30 && diffInDays < 365) {
+      newDuration = '1 Month';
+    } else if (diffInDays >= 365 && diffInDays < 1825) {
+      newDuration = '1 Year';
+    } else if (diffInDays >= 1825) {
+      newDuration = '5 Years';
+    }
 
-          // Determine if free or paid permits are enabled
-          setEnableFreePermits(!!permits_per_month && status === 'Free');
-          setEnablePaidPermits(status === 'FreePaid');
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred while fetching the lot data');
-      }
-    };
-    fetchLotData();
-  }, [id]);
+    setDurationType(newDuration);
+
+    // Ensure the duration in formData is updated with the correct calculated value
+    setFormData(prev => ({
+      ...prev,
+      duration: newDuration,  // Use newDuration here to match the calculated value
+    }));
+  }
+}, [startDate, endDate]);
+
+const handleDurationChange = (durations: string) => {
+  setDurationType(durations);  // Update durationType when the button is clicked
+
+  // Update formData with the selected duration
+  setFormData((prev) => ({
+    ...prev,
+    duration: durations,  // Ensure formData's duration is updated
+  }));
+};
+
+
+
+  // useEffect(() => {
+  //   fetchLots();
+  // }, []);
+
+
+
+
+
 
   const closeModal = () => {
     setModalIsOpen(false);
-    navigate('/lots'); // Redirect after successful update
   };
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -128,24 +158,28 @@ const EditLot: React.FC = () => {
       // Prepare pricing data for paid permits
       const pricingData = enablePaidPermits
         ? permitDurations.reduce((acc, { duration, price }) => {
-            acc[duration] = parseFloat(price);
-            return acc;
-          }, {} as Record<string, number>)
+          acc[duration] = parseFloat(price);
+          return acc;
+        }, {} as Record<string, number>)
         : null;
 
       // Prepare lot data for API submission
       const lotData = {
         ...formData,
         permits_per_month: enableFreePermits ? formData.permits_per_month : 0,
-        duration: enableFreePermits ? formData.duration : null,
+        duration: enableFreePermits ? formData.duration : formData.duration || '1 Day',  // Use a fallback if duration is null
         pricing: pricingData,
         status: enablePaidPermits ? 'FreePaid' : 'Free',
       };
+      
 
       // Call the API to update the lot
       if (id) {
         await lotApi.updateLot(parseInt(id), lotData);
         setModalIsOpen(true);
+        setTimeout(() => {
+          navigate('/lotaccess');  
+        }, 3000); 
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred while updating the lot');
@@ -247,7 +281,54 @@ const EditLot: React.FC = () => {
                   className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                 />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div>
+          <label htmlFor="startDate" className="block text-sm font-bold text-gray-700">
+            Start Date & Time
+          </label>
+          <input
+            type="datetime-local"
+            id="startDate"
+            name="start_date"
+            className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={startDate}
+            onChange={handleDateChange}
+          />
+        </div>
+        <div>
+          <label htmlFor="endDate" className="block text-sm font-bold text-gray-700">
+            End Date & Time
+          </label>
+          <input
+            type="datetime-local"
+            id="endDate"
+            name="end_date"
+            className="block w-full px-3 py-2 mt-1 border rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={endDate}
+            onChange={handleDateChange}
+          />
+        </div>
+      </div>
 
+      {/* Duration display */}
+      <div className="flex space-x-2 flex-wrap gap-y-3">
+        {['1 Day', '7 Days', '1 Month', '1 Year', '5 Years'].map((duration) => (
+          <button
+            type="button"
+            key={duration}
+            className={`px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring focus:ring-indigo-500 ${
+              duration === durationType ? 'bg-indigo-100' : ''
+            }`}
+            onClick={() => handleDurationChange(duration)} // Call handleDurationChange on click
+          >
+            {duration}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        <p>Selected Duration: {formData.duration}</p> {/* Display the selected duration */}
+      </div>
               {/* Free Permits Section */}
               <div>
                 <label className="flex items-center space-x-2">
